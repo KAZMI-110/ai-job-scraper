@@ -100,9 +100,14 @@ export default function ProJobCard({ job, isSaved, onToggleSave }: Props) {
           <span className="pulse-dot w-1.5 h-1.5" />
           {job.postedDaysAgo === 0 ? "Today" : `${job.postedDaysAgo}d ago`}
         </span>
-        <button className="text-[10px] text-violet-400 hover:text-violet-300 font-medium transition-colors">
+        <a
+          href={job.applyUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] text-violet-400 hover:text-violet-300 font-medium transition-colors"
+        >
           Apply Now →
-        </button>
+        </a>
       </div>
     </div>
   );

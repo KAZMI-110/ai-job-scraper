@@ -69,10 +69,16 @@ function generateJobs(jobTitle: string, countryCode: string, selectedCity?: stri
         : seededPick(cd.cities, ci);
       const location = countryCode === "REMOTE" ? "Worldwide Remote" : `${cityName}, ${countryName}`;
 
+      const company = cd.companies[ci];
+      const companyDomain = company.toLowerCase().replace(/\s+/g, "");
+      const applyUrl = countryCode === "REMOTE"
+        ? `https://www.google.com/search?q=${encodeURIComponent(company + " " + title + " careers")}`
+        : `https://www.${companyDomain}.com/careers`;
+
       jobs.push({
         id: `job-${countryCode}-${id++}`,
         title,
-        company: cd.companies[ci],
+        company,
         location,
         country: countryName,
         countryCode,
@@ -82,6 +88,7 @@ function generateJobs(jobTitle: string, countryCode: string, selectedCity?: stri
         tags,
         postedDate: postedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         postedDaysAgo: daysAgo,
+        applyUrl,
       });
     }
   }

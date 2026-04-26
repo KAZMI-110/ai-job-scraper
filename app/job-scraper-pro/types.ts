@@ -11,6 +11,7 @@ export interface JobListing {
   tags: string[];
   postedDate: string;
   postedDaysAgo: number;
+  applyUrl: string;
 }
 
 export interface AIAnalysis {
