@@ -60,7 +60,7 @@ async function fetchFromJSearch(
         .filter(Boolean)
         .join(", "),
       description: String(job.job_description ?? ""),
-      url: String(job.job_apply_link ?? "#"),
+      url: String(job.job_apply_link ?? job.job_google_link ?? "#"),
       salary: job.job_min_salary
         ? `${job.job_salary_currency ?? "$"} ${Number(job.job_min_salary).toLocaleString()} – ${Number(job.job_max_salary).toLocaleString()} / yr`
         : "Salary not disclosed",
@@ -167,6 +167,43 @@ async function fetchFromAdzuna(
   }
 }
 
+// ── Remotive (FREE — no API key needed) ─────────────────────────────────────
+async function fetchFromRemotive(query: string): Promise<Job[]> {
+  try {
+    const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=15`;
+    const res = await fetch(url, { next: { revalidate: 120 } });
+
+    if (!res.ok) {
+      console.error(`Remotive HTTP ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    if (!data?.jobs || !Array.isArray(data.jobs)) return [];
+
+    return data.jobs.map((job: Record<string, unknown>) => ({
+      id: String(job.id ?? Math.random()),
+      title: String(job.title ?? ""),
+      company: String(job.company_name ?? "Unknown Company"),
+      location: String(job.candidate_required_location ?? "Remote"),
+      description: String(job.description ?? "").replace(/<[^>]*>/g, "").substring(0, 500),
+      url: String(job.url ?? "#"),
+      salary: job.salary ? String(job.salary) : "Salary not disclosed",
+      postedAt: job.publication_date
+        ? new Date(job.publication_date as string).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "Recently",
+      source: "Remotive" as const,
+    }));
+  } catch (err) {
+    console.error("Remotive fetch error:", err);
+    return [];
+  }
+}
+
 // ── Fallback: Generate realistic demo jobs from local data ──────────────────
 // Used when no API keys are configured — keeps the UI fully functional.
 const DESCRIPTIONS: Record<string, string> = {
@@ -192,6 +229,18 @@ function getDescription(title: string): string {
   return DESCRIPTIONS.default;
 }
 
+// Job search platforms to rotate between for fallback URLs
+const JOB_PLATFORMS = [
+  (title: string, company: string, location: string) =>
+    `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`${title} ${company}`)}&location=${encodeURIComponent(location)}`,
+  (title: string, company: string, location: string) =>
+    `https://www.indeed.com/jobs?q=${encodeURIComponent(`${title} ${company}`)}&l=${encodeURIComponent(location)}`,
+  (title: string, company: string, location: string) =>
+    `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(`${title} ${company}`)}&locT=C&locKeyword=${encodeURIComponent(location)}`,
+  (title: string, company: string, _location: string) =>
+    `https://www.google.com/search?q=${encodeURIComponent(`${company} ${title} careers apply`)}&ibp=htl;jobs`,
+];
+
 function generateFallbackJobs(
   jobTitle: string,
   location: string,
@@ -212,6 +261,7 @@ function generateFallbackJobs(
   const tags = getTagsForRole(jobTitle);
   const expLevels = ["Junior", "Mid-Level", "Senior", "Lead"] as const;
   const jobTypes = ["Remote", "Hybrid", "On-site"] as const;
+  const sources = ["JSearch", "Adzuna", "Remotive", "Indeed"] as const;
   const jobs: Job[] = [];
 
   const startIdx = (page - 1) * 10;
@@ -240,16 +290,20 @@ function generateFallbackJobs(
 
     const slug = `${company.toLowerCase().replace(/\s+/g, "-")}-${title.toLowerCase().replace(/\s+/g, "-")}-${i}`;
 
+    // Rotate between different job platforms for apply links
+    const platformFn = JOB_PLATFORMS[i % JOB_PLATFORMS.length];
+    const jobLocation = jobType === "Remote" ? "Remote" : city;
+
     jobs.push({
       id: `fallback-${slug}`,
       title,
       company,
       location: jobType === "Remote" ? "Remote / Worldwide" : `${city}`,
       description: `${getDescription(title)}\n\nKey skills required: ${tags.slice(0, 5).join(", ")}.`,
-      url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`${title} ${company}`)}&location=${encodeURIComponent(jobType === "Remote" ? "Worldwide" : city)}`,
+      url: platformFn(title, company, jobLocation),
       salary: `${cd.symbol} ${salMin.toLocaleString()} – ${salMax.toLocaleString()} ${cd.salaryUnit}`,
       postedAt: posted.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      source: "JSearch",
+      source: sources[i % sources.length],
     });
   }
 
@@ -262,12 +316,16 @@ export async function fetchJobs(
   location: string = "United States",
   page: number = 1
 ): Promise<{ jobs: Job[]; source: "live" | "demo" }> {
-  // Try live APIs first
-  const jSearchJobs = await fetchFromJSearch(query, location, page);
-  if (jSearchJobs.length > 0) return { jobs: jSearchJobs, source: "live" };
+  // Try all live APIs in parallel for speed
+  const [jSearchJobs, adzunaJobs, remotiveJobs] = await Promise.all([
+    fetchFromJSearch(query, location, page),
+    fetchFromAdzuna(query, location, page),
+    fetchFromRemotive(query),
+  ]);
 
-  const adzunaJobs = await fetchFromAdzuna(query, location, page);
-  if (adzunaJobs.length > 0) return { jobs: adzunaJobs, source: "live" };
+  // Merge all live results
+  const liveJobs = [...jSearchJobs, ...adzunaJobs, ...remotiveJobs];
+  if (liveJobs.length > 0) return { jobs: liveJobs, source: "live" };
 
   // No API keys configured → use local data engine as demo
   const fallback = generateFallbackJobs(query, location, page);
