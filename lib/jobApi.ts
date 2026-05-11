@@ -22,7 +22,9 @@ const COMMON_SKILLS = [
   "Figma", "Jira", "Firebase", "Stripe", "Webpack", "Vite", "Jest",
 ];
 
-// ── JSearch (RapidAPI) ──────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SOURCE 1: JSearch (RapidAPI) — needs API key
+// ══════════════════════════════════════════════════════════════════════════════
 async function fetchFromJSearch(
   query: string,
   location: string,
@@ -79,7 +81,9 @@ async function fetchFromJSearch(
   }
 }
 
-// ── Adzuna ──────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SOURCE 2: Adzuna — needs API key
+// ══════════════════════════════════════════════════════════════════════════════
 const ADZUNA_COUNTRY_MAP: Record<string, string> = {
   "united states": "us", "us": "us", "usa": "us",
   "united kingdom": "gb", "uk": "gb", "gb": "gb",
@@ -96,6 +100,7 @@ const ADZUNA_COUNTRY_MAP: Record<string, string> = {
   "brazil": "br", "br": "br",
   "mexico": "mx", "mx": "mx",
   "south africa": "za", "za": "za",
+  "pakistan": "pk", "pk": "pk",
   "russia": "ru", "ru": "ru",
   "austria": "at", "at": "at",
   "belgium": "be", "be": "be",
@@ -123,8 +128,8 @@ async function fetchFromAdzuna(
   const url =
     `https://api.adzuna.com/v1/api/jobs/${country}/search/${page}` +
     `?app_id=${ADZUNA_APP_ID}&app_key=${ADZUNA_APP_KEY}` +
-    `&results_per_page=10&what=${encodeURIComponent(query)}` +
-    `&where=${encodeURIComponent(location)}&content-type=application/json`;
+    `&results_per_page=15&what=${encodeURIComponent(query)}` +
+    `&content-type=application/json`;
 
   try {
     const res = await fetch(url, { next: { revalidate: 60 } });
@@ -142,10 +147,10 @@ async function fetchFromAdzuna(
       const loc = job.location as Record<string, unknown> | undefined;
       return {
         id: String(job.id ?? Math.random()),
-        title: String(job.title ?? ""),
+        title: String(job.title ?? "").replace(/<[^>]*>/g, ""),
         company: String(company?.display_name ?? "Unknown Company"),
         location: String(loc?.display_name ?? location),
-        description: String(job.description ?? ""),
+        description: String(job.description ?? "").replace(/<[^>]*>/g, ""),
         url: String(job.redirect_url ?? "#"),
         salary:
           job.salary_min
@@ -167,10 +172,13 @@ async function fetchFromAdzuna(
   }
 }
 
-// ── Remotive (FREE — no API key needed) ─────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SOURCE 3: Remotive (FREE — no API key needed)
+// Real remote jobs with direct company apply links
+// ══════════════════════════════════════════════════════════════════════════════
 async function fetchFromRemotive(query: string): Promise<Job[]> {
   try {
-    const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=15`;
+    const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}&limit=20`;
     const res = await fetch(url, { next: { revalidate: 120 } });
 
     if (!res.ok) {
@@ -182,11 +190,11 @@ async function fetchFromRemotive(query: string): Promise<Job[]> {
     if (!data?.jobs || !Array.isArray(data.jobs)) return [];
 
     return data.jobs.map((job: Record<string, unknown>) => ({
-      id: String(job.id ?? Math.random()),
+      id: `remotive-${job.id ?? Math.random()}`,
       title: String(job.title ?? ""),
       company: String(job.company_name ?? "Unknown Company"),
-      location: String(job.candidate_required_location ?? "Remote"),
-      description: String(job.description ?? "").replace(/<[^>]*>/g, "").substring(0, 500),
+      location: String(job.candidate_required_location ?? "Remote / Worldwide"),
+      description: String(job.description ?? "").replace(/<[^>]*>/g, "").substring(0, 600),
       url: String(job.url ?? "#"),
       salary: job.salary ? String(job.salary) : "Salary not disclosed",
       postedAt: job.publication_date
@@ -204,8 +212,90 @@ async function fetchFromRemotive(query: string): Promise<Job[]> {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// SOURCE 4: Arbeitnow (FREE — no API key needed)
+// Real jobs from European + global companies with direct apply links
+// ══════════════════════════════════════════════════════════════════════════════
+async function fetchFromArbeitnow(query: string): Promise<Job[]> {
+  try {
+    const url = `https://www.arbeitnow.com/api/job-board-api?search=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { next: { revalidate: 120 } });
+
+    if (!res.ok) {
+      console.error(`Arbeitnow HTTP ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    if (!data?.data || !Array.isArray(data.data)) return [];
+
+    return data.data.slice(0, 15).map((job: Record<string, unknown>) => ({
+      id: `arbeitnow-${job.slug ?? Math.random()}`,
+      title: String(job.title ?? ""),
+      company: String(job.company_name ?? "Unknown Company"),
+      location: String(job.location ?? "Europe"),
+      description: String(job.description ?? "").replace(/<[^>]*>/g, "").substring(0, 600),
+      url: String(job.url ?? "#"),
+      salary: "Salary not disclosed",
+      postedAt: job.created_at
+        ? new Date(Number(job.created_at) * 1000).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "Recently",
+      source: "Arbeitnow" as const,
+    }));
+  } catch (err) {
+    console.error("Arbeitnow fetch error:", err);
+    return [];
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOURCE 5: Jobicy (FREE — no API key needed)
+// Real remote jobs from global companies with direct apply links
+// ══════════════════════════════════════════════════════════════════════════════
+async function fetchFromJobicy(query: string): Promise<Job[]> {
+  try {
+    const url = `https://jobicy.com/api/v2/remote-jobs?count=15&tag=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { next: { revalidate: 120 } });
+
+    if (!res.ok) {
+      console.error(`Jobicy HTTP ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    if (!data?.jobs || !Array.isArray(data.jobs)) return [];
+
+    return data.jobs.map((job: Record<string, unknown>) => ({
+      id: `jobicy-${job.id ?? Math.random()}`,
+      title: String(job.jobTitle ?? ""),
+      company: String(job.companyName ?? "Unknown Company"),
+      location: String(job.jobGeo ?? "Remote"),
+      description: String(job.jobExcerpt ?? "").replace(/<[^>]*>/g, "").substring(0, 600),
+      url: String(job.url ?? "#"),
+      salary: job.annualSalaryMin
+        ? `$${Number(job.annualSalaryMin).toLocaleString()} – $${Number(job.annualSalaryMax).toLocaleString()} / yr`
+        : "Salary not disclosed",
+      postedAt: job.pubDate
+        ? new Date(job.pubDate as string).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "Recently",
+      source: "Jobicy" as const,
+    }));
+  } catch (err) {
+    console.error("Jobicy fetch error:", err);
+    return [];
+  }
+}
+
 // ── Fallback: Generate realistic demo jobs from local data ──────────────────
-// Used when no API keys are configured — keeps the UI fully functional.
+// Used ONLY when ALL APIs return zero results.
 const DESCRIPTIONS: Record<string, string> = {
   frontend: `We are looking for a passionate Frontend Developer to join our engineering team. You will build responsive, high-performance web interfaces using React and TypeScript, collaborate with designers to implement pixel-perfect UI components, and optimize page load performance. Experience with Next.js, Tailwind CSS, and modern CI/CD pipelines is a strong plus. You'll work in an Agile environment with 2-week sprints and daily standups.`,
   backend: `We are hiring an experienced Backend Engineer to design and implement scalable RESTful APIs and microservices. You will work with Node.js or Python, manage PostgreSQL and MongoDB databases, and deploy containerized services on AWS using Docker and Kubernetes. Strong understanding of system design, caching strategies (Redis), and authentication (JWT/OAuth2) is required.`,
@@ -229,14 +319,14 @@ function getDescription(title: string): string {
   return DESCRIPTIONS.default;
 }
 
-// Job search platforms to rotate between for fallback URLs
+// Fallback apply link generators — rotate between multiple real job boards
 const JOB_PLATFORMS = [
   (title: string, company: string, location: string) =>
     `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`${title} ${company}`)}&location=${encodeURIComponent(location)}`,
   (title: string, company: string, location: string) =>
     `https://www.indeed.com/jobs?q=${encodeURIComponent(`${title} ${company}`)}&l=${encodeURIComponent(location)}`,
   (title: string, company: string, location: string) =>
-    `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(`${title} ${company}`)}&locT=C&locKeyword=${encodeURIComponent(location)}`,
+    `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(`${title} ${company}`)}&locKeyword=${encodeURIComponent(location)}`,
   (title: string, company: string, _location: string) =>
     `https://www.google.com/search?q=${encodeURIComponent(`${company} ${title} careers apply`)}&ibp=htl;jobs`,
 ];
@@ -246,7 +336,6 @@ function generateFallbackJobs(
   location: string,
   page: number
 ): Job[] {
-  // Resolve country code from location string
   const lower = location.toLowerCase();
   let countryCode = "US";
   for (const c of COUNTRIES) {
@@ -261,13 +350,12 @@ function generateFallbackJobs(
   const tags = getTagsForRole(jobTitle);
   const expLevels = ["Junior", "Mid-Level", "Senior", "Lead"] as const;
   const jobTypes = ["Remote", "Hybrid", "On-site"] as const;
-  const sources = ["JSearch", "Adzuna", "Remotive", "Indeed"] as const;
+  const sources = ["LinkedIn", "Indeed", "Glassdoor", "Google Jobs"] as const;
   const jobs: Job[] = [];
 
   const startIdx = (page - 1) * 10;
   const endIdx = startIdx + 10;
 
-  // Generate 40 total, slice to page
   for (let i = 0; i < 40; i++) {
     const company = cd.companies[i % cd.companies.length];
     const expLevel = expLevels[i % expLevels.length];
@@ -289,8 +377,6 @@ function generateFallbackJobs(
     posted.setDate(posted.getDate() - daysAgo);
 
     const slug = `${company.toLowerCase().replace(/\s+/g, "-")}-${title.toLowerCase().replace(/\s+/g, "-")}-${i}`;
-
-    // Rotate between different job platforms for apply links
     const platformFn = JOB_PLATFORMS[i % JOB_PLATFORMS.length];
     const jobLocation = jobType === "Remote" ? "Remote" : city;
 
@@ -310,24 +396,35 @@ function generateFallbackJobs(
   return jobs.slice(startIdx, endIdx);
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// PUBLIC API — fetches from ALL sources in parallel
+// ══════════════════════════════════════════════════════════════════════════════
 export async function fetchJobs(
   query: string,
   location: string = "United States",
   page: number = 1
 ): Promise<{ jobs: Job[]; source: "live" | "demo" }> {
-  // Try all live APIs in parallel for speed
-  const [jSearchJobs, adzunaJobs, remotiveJobs] = await Promise.all([
+  // Fire ALL sources in parallel for maximum speed & coverage
+  const [jSearchJobs, adzunaJobs, remotiveJobs, arbeitnowJobs, jobicyJobs] = await Promise.all([
     fetchFromJSearch(query, location, page),
     fetchFromAdzuna(query, location, page),
     fetchFromRemotive(query),
+    fetchFromArbeitnow(query),
+    fetchFromJobicy(query),
   ]);
 
   // Merge all live results
-  const liveJobs = [...jSearchJobs, ...adzunaJobs, ...remotiveJobs];
+  const liveJobs = [
+    ...jSearchJobs,
+    ...adzunaJobs,
+    ...remotiveJobs,
+    ...arbeitnowJobs,
+    ...jobicyJobs,
+  ];
+
   if (liveJobs.length > 0) return { jobs: liveJobs, source: "live" };
 
-  // No API keys configured → use local data engine as demo
+  // ALL APIs returned nothing → use fallback demo data
   const fallback = generateFallbackJobs(query, location, page);
   return { jobs: fallback, source: "demo" };
 }
@@ -346,7 +443,7 @@ export function extractSkills(text: string): string[] {
 export function calculateMatchScore(jobDesc: string, userSkills: string[]): number {
   if (!userSkills.length) return 0;
   const jobSkills = extractSkills(jobDesc);
-  if (!jobSkills.length) return Math.min(userSkills.length * 5, 40); // partial credit
+  if (!jobSkills.length) return Math.min(userSkills.length * 5, 40);
   const matched = userSkills.filter((s) =>
     jobSkills.some((j) => j.toLowerCase() === s.toLowerCase())
   );
