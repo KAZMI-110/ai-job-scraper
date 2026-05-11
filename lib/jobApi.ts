@@ -246,7 +246,7 @@ function generateFallbackJobs(
       company,
       location: jobType === "Remote" ? "Remote / Worldwide" : `${city}`,
       description: `${getDescription(title)}\n\nKey skills required: ${tags.slice(0, 5).join(", ")}.`,
-      url: `/apply/${slug}`,
+      url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`${title} ${company}`)}&location=${encodeURIComponent(jobType === "Remote" ? "Worldwide" : city)}`,
       salary: `${cd.symbol} ${salMin.toLocaleString()} – ${salMax.toLocaleString()} ${cd.salaryUnit}`,
       postedAt: posted.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       source: "JSearch",

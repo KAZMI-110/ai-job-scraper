@@ -71,9 +71,7 @@ function generateJobs(jobTitle: string, countryCode: string, selectedCity?: stri
 
       const company = cd.companies[ci];
       const companyDomain = company.toLowerCase().replace(/\s+/g, "");
-      const applyUrl = countryCode === "REMOTE"
-        ? `https://www.google.com/search?q=${encodeURIComponent(company + " " + title + " careers")}`
-        : `https://www.${companyDomain}.com/careers`;
+      const applyUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(title + " " + company)}&location=${encodeURIComponent(countryCode === "REMOTE" ? "Worldwide" : cityName + ", " + countryName)}`;
 
       jobs.push({
         id: `job-${countryCode}-${id++}`,
